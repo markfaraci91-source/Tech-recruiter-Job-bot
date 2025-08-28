@@ -24,4 +24,4 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run job bot
-      run: python job-bot-starter/data/job_bot.py
+      run: python job-bot-starter/job_bot.py
