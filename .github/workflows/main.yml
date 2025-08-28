@@ -29,4 +29,5 @@ jobs:
 
     # Step 4: Run the bot
     - name: Run job bot
-      run: python job_bot.py
+      run: python bot/job_bot.py
+
