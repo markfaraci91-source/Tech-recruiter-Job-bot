@@ -1,96 +1,54 @@
-import os
-from pathlib import Path
-from datetime import datetime, timezone
 import requests
 import pandas as pd
+import time
+import os
 
-REMOTIVE_URL = "https://remotive.io/api/remote-jobs"
+# Headers to mimic a browser
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+}
 
-# Adjust these to your taste
-KEYWORDS = [
-    "recruiter",
-    "recruiting",
-    "talent acquisition",
-    "technical recruiter",
-    "tech recruiter",
-    "sourcer",
-    "technical sourcer",
-]
-EXCLUDE_TERMS = [
-    # add strings that should exclude a listing, e.g. "non-tech", "campus"
-]
-
-OUTPUT_DIR = Path("data")
-OUTPUT_CSV = OUTPUT_DIR / "latest.csv"
-
+# Number of retries if server error occurs
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # seconds
 
 def fetch_remotive_jobs():
-    # Pull all remote jobs once, then filter locally
-    r = requests.get(REMOTIVE_URL, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-    return data.get("jobs", [])
+    url = "https://remotive.io/api/remote-jobs"
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("jobs", [])
+        except requests.exceptions.RequestException as e:
+            print(f"Attempt {attempt} failed: {e}")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY)
+            else:
+                print("Max retries reached. Skipping fetch.")
+                return []
 
-
-def is_match(title: str, description: str) -> bool:
-    t = (title or "").lower()
-    d = (description or "").lower()
-    if not any(k in t for k in KEYWORDS):
-        return False
-    if any(x.lower() in t or x.lower() in d for x in EXCLUDE_TERMS):
-        return False
-    return True
-
-
-def normalize(job):
-    # Map Remotive fields to a compact schema
-    pub_date = job.get("publication_date")
-    try:
-        # Example format: "2024-09-05T16:45:43"
-        dt = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
-    except Exception:
-        dt = None
-
-    return {
-        "Date": dt.isoformat().replace("+00:00", "Z") if dt else pub_date,
-        "Title": job.get("title"),
-        "Company": job.get("company_name"),
-        "Location": job.get("candidate_required_location"),
-        "Job Type": job.get("job_type"),
-        "Category": job.get("category"),
-        "Salary": job.get("salary"),
-        "URL": job.get("url"),
-        "Source": "Remotive",
-    }
-
+def save_jobs_to_csv(jobs):
+    if not jobs:
+        print("No jobs fetched.")
+        return
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(jobs)
+    
+    # Create output folder if it doesn't exist
+    os.makedirs("output", exist_ok=True)
+    
+    # Save with a timestamped filename
+    filename = f"output/jobs_{int(time.time())}.csv"
+    df.to_csv(filename, index=False)
+    print(f"Saved {len(jobs)} jobs to {filename}")
 
 def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    print("Fetching jobs...")
     jobs = fetch_remotive_jobs()
-
-    matches = []
-    for j in jobs:
-        title = j.get("title", "")
-        desc = j.get("description", "")
-        if is_match(title, desc):
-            matches.append(normalize(j))
-
-    if not matches:
-        print("No matching jobs found.")
-        # still write an empty CSV with headers for consistency
-        pd.DataFrame(columns=[
-            "Date","Title","Company","Location","Job Type","Category","Salary","URL","Source"
-        ]).to_csv(OUTPUT_CSV, index=False)
-        return
-
-    df = pd.DataFrame(matches).drop_duplicates(subset=["URL"])
-
-    # Sort newest first by Date (ISO8601 strings work lexicographically when consistent)
-    df = df.sort_values(by="Date", ascending=False)
-
-    df.to_csv(OUTPUT_CSV, index=False)
-    print(f"Wrote {len(df)} jobs to {OUTPUT_CSV}")
-
+    save_jobs_to_csv(jobs)
+    print("Done!")
 
 if __name__ == "__main__":
     main()
