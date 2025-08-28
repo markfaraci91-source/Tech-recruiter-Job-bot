@@ -1,0 +1,6 @@
+requests        # To make HTTP requests to websites
+beautifulsoup4  # To parse HTML and extract job data
+pandas          # To organize and store data in tables (optional, but helpful)
+selenium        # If you need to interact with dynamic websites (like clicking buttons)
+lxml            # Faster HTML parser for BeautifulSoup
+openpyxl        # Required if you want to export data to Excel
